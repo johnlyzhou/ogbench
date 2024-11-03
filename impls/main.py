@@ -45,10 +45,11 @@ config_flags.DEFINE_config_file('agent', 'agents/gciql.py', lock_config=False)
 
 
 def main(_):
-    # Set GPU
+    # Set default device.
     devices = jax.devices(FLAGS.device_type)
     if FLAGS.device_id < len(devices):
-        jax.default_device = devices[FLAGS.device_id]
+        jax.config.update("jax_default_device", devices[FLAGS.device_id])
+        print(f"Using {jax.default_device}")
     else:
         raise ValueError(f'There are only {len(devices)} the devices of type {FLAGS.device_type} available.')
 
