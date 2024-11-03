@@ -26,6 +26,8 @@ flags.DEFINE_string('save_dir', 'exp/', 'Save directory.')
 flags.DEFINE_string('restore_path', None, 'Restore path.')
 flags.DEFINE_integer('restore_epoch', None, 'Restore epoch.')
 
+flags.DEFINE_string('device_type', 'gpu', 'Device type (cpu, gpu, or tpu).')
+flags.DEFINE_integer('device_id', 0, 'Index of GPU device to use.')
 flags.DEFINE_integer('train_steps', 1000000, 'Number of training steps.')
 flags.DEFINE_integer('log_interval', 5000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 100000, 'Evaluation interval.')
@@ -43,6 +45,13 @@ config_flags.DEFINE_config_file('agent', 'agents/gciql.py', lock_config=False)
 
 
 def main(_):
+    # Set GPU
+    devices = jax.devices(FLAGS.device_type)
+    if FLAGS.device_id < len(devices):
+        jax.default_device = devices[FLAGS.device_id]
+    else:
+        raise ValueError(f'There are only {len(devices)} the devices of type {FLAGS.device_type} available.')
+
     # Set up logger.
     exp_name = get_exp_name(FLAGS.seed)
     setup_wandb(project='OGBench', group=FLAGS.run_group, name=exp_name)
