@@ -68,8 +68,15 @@ class QRLAgent(flax.struct.PyTreeNode):
         )
 
         dist1 = self.network.select('value')(next_ob_reps, pred_next_ob_reps, is_phi=True, params=grad_params)
-        dist2 = self.network.select('value')(pred_next_ob_reps, next_ob_reps, is_phi=True, params=grad_params)
-        dynamics_loss = (dist1 + dist2).mean() / 2
+
+        if self.config['dynamics_loss'] == 'bidirectional':
+            # Bidirectional dynamics loss.
+            dist2 = self.network.select('value')(pred_next_ob_reps, next_ob_reps, is_phi=True, params=grad_params)
+            dynamics_loss = (dist1 + dist2).mean() / 2
+        elif self.config['dynamics_loss'] == 'unidirectional':
+            dynamics_loss = dist1.mean()
+        else:
+            raise ValueError(f'Unsupported dynamics loss: {self.config["dynamics_loss"]}')
 
         return dynamics_loss, {
             'dynamics_loss': dynamics_loss,
@@ -306,6 +313,7 @@ def get_config():
             discount=0.99,  # Discount factor (unused by default; can be used for geometric goal sampling in GCDataset).
             eps=0.05,  # Margin for the dual lambda loss.
             actor_loss='ddpgbc',  # Actor loss type ('awr' or 'ddpgbc').
+            dynamics_loss='unidirectional',  # Dynamics loss type ('unidirectional' or 'bidirectional').
             alpha=0.003,  # Temperature in AWR or BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.
