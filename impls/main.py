@@ -46,12 +46,13 @@ config_flags.DEFINE_config_file('agent', 'agents/gciql.py', lock_config=False)
 
 def main(_):
     # Set default device.
+    print(f"Original default device: {jax.devices()[0]}")
     devices = jax.devices(FLAGS.device_type)
     if FLAGS.device_id < len(devices):
         jax.config.update("jax_default_device", devices[FLAGS.device_id])
-        print(f"Using {jax.default_device}")
+        print(f"Using {jax.config.jax_default_device}")
     else:
-        raise ValueError(f'There are only {len(devices)} the devices of type {FLAGS.device_type} available.')
+        raise ValueError(f'There are only {len(devices)} devices of type {FLAGS.device_type} available: {devices}.')
 
     # Set up logger.
     exp_name = get_exp_name(FLAGS.seed)
