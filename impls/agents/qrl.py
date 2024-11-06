@@ -313,7 +313,7 @@ def get_config():
             discount=0.99,  # Discount factor (unused by default; can be used for geometric goal sampling in GCDataset).
             eps=0.05,  # Margin for the dual lambda loss.
             actor_loss='ddpgbc',  # Actor loss type ('awr' or 'ddpgbc').
-            dynamics_loss='unidirectional',  # Dynamics loss type ('unidirectional' or 'bidirectional').
+            dynamics_loss='bidirectional',  # Dynamics loss type ('unidirectional' or 'bidirectional').
             alpha=0.003,  # Temperature in AWR or BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.
