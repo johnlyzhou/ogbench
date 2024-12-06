@@ -254,7 +254,9 @@ class GCDataset:
         batch_size = len(idxs)
 
         # Random goals.
-        random_goal_idxs = self.dataset.get_random_idxs(batch_size)
+        # random_goal_idxs = self.dataset.get_random_idxs(batch_size)
+        # Alternative random goals where we take the next state of the adjacent random sample as done in QRL.
+        random_goal_idxs = np.roll(idxs + 1, 1)
 
         # Goals from the same trajectory (excluding the current state, unless it is the final state).
         final_state_idxs = self.terminal_locs[np.searchsorted(self.terminal_locs, idxs)]
