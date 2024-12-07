@@ -6,9 +6,9 @@ import jax
 import jax.numpy as jnp
 import ml_collections
 import optax
-from utils.encoders import GCEncoder, encoder_modules
-from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCActor, GCDiscreteActor, GCDiscreteCritic, GCValue
+from ..utils.encoders import GCEncoder, encoder_modules
+from ..utils.flax_utils import ModuleDict, TrainState, nonpytree_field
+from ..utils.networks import GCActor, GCDiscreteActor, GCDiscreteCritic, GCValue
 
 
 class GCIQLAgent(flax.struct.PyTreeNode):
@@ -23,15 +23,19 @@ class GCIQLAgent(flax.struct.PyTreeNode):
 
     @staticmethod
     def expectile_loss(adv, diff, expectile):
-        """Compute the expectile loss."""
+        """Compute the expectile loss, which weights x**2 by tau if negative, and 1 - tau if positive, where x is the
+        error/difference and tau is the expectile."""
         weight = jnp.where(adv >= 0, expectile, (1 - expectile))
         return weight * (diff**2)
 
     def value_loss(self, batch, grad_params):
         """Compute the IQL value loss."""
+        # Estimate Q(s, a, g) using double Q-value learning (taking the minimum of two Q-value estimates).
         q1, q2 = self.network.select('target_critic')(batch['observations'], batch['value_goals'], batch['actions'])
         q = jnp.minimum(q1, q2)
+        # Compute the baseline value estimate V(s, g).
         v = self.network.select('value')(batch['observations'], batch['value_goals'], params=grad_params)
+        # Compute the expectile regression loss between Q(s, a, g) and V(s, g).
         value_loss = self.expectile_loss(q - v, q - v, self.config['expectile']).mean()
 
         return value_loss, {
@@ -43,12 +47,16 @@ class GCIQLAgent(flax.struct.PyTreeNode):
 
     def critic_loss(self, batch, grad_params):
         """Compute the IQL critic loss."""
+        # Compute the value of the next state V(s', g).
         next_v = self.network.select('value')(batch['next_observations'], batch['value_goals'])
+        # Compute the target Q-value using the Bellman equation r(s, a, g) + gamma * V(s', g).
         q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v
 
+        # Get both Q-value estimates Q(s, a, g) from the critic network.
         q1, q2 = self.network.select('critic')(
             batch['observations'], batch['value_goals'], batch['actions'], params=grad_params
         )
+        # MSE loss for each Q-value estimate
         critic_loss = ((q1 - q) ** 2 + (q2 - q) ** 2).mean()
 
         return critic_loss, {
@@ -70,6 +78,7 @@ class GCIQLAgent(flax.struct.PyTreeNode):
             exp_a = jnp.exp(adv * self.config['alpha'])
             exp_a = jnp.minimum(exp_a, 100.0)
 
+            # Get the log-probs of the actions under the current policy.
             dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
             log_prob = dist.log_prob(batch['actions'])
 
