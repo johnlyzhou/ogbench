@@ -33,19 +33,26 @@ class HIQLAgent(flax.struct.PyTreeNode):
         compute the former and the current value function to compute the latter. This is similar to how double DQN
         mitigates overestimation bias.
         """
+        # V(s', g) computed with target value function(s), take the MINIMUM of two estimates.
         (next_v1_t, next_v2_t) = self.network.select('target_value')(batch['next_observations'], batch['value_goals'])
         next_v_t = jnp.minimum(next_v1_t, next_v2_t)
+        # q = r(s, g) + gamma * V(s', g)
         q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v_t
 
+        # V(s, g) computed with target value function(s), take the AVERAGE of two estimates.
         (v1_t, v2_t) = self.network.select('target_value')(batch['observations'], batch['value_goals'])
         v_t = (v1_t + v2_t) / 2
+        # Adv = r(s, g) + gamma * V(s', g) - V(s, g)
         adv = q - v_t
 
+        # Compute r(s, g) + gamma * V(s', g) using the target value function(s) evaluated above.
         q1 = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v1_t
         q2 = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v2_t
+        # Compute V(s, g) using the current value function(s), take the AVERAGE of two estimates.
         (v1, v2) = self.network.select('value')(batch['observations'], batch['value_goals'], params=grad_params)
         v = (v1 + v2) / 2
 
+        # Compute the expectile loss using advantage computed with mean of target value estimates.
         value_loss1 = self.expectile_loss(adv, q1 - v1, self.config['expectile']).mean()
         value_loss2 = self.expectile_loss(adv, q2 - v2, self.config['expectile']).mean()
         value_loss = value_loss1 + value_loss2
@@ -59,6 +66,7 @@ class HIQLAgent(flax.struct.PyTreeNode):
 
     def low_actor_loss(self, batch, grad_params):
         """Compute the low-level actor loss."""
+        # Compute the advantage using the current value function.
         v1, v2 = self.network.select('value')(batch['observations'], batch['low_actor_goals'])
         nv1, nv2 = self.network.select('value')(batch['next_observations'], batch['low_actor_goals'])
         v = (v1 + v2) / 2
@@ -76,6 +84,7 @@ class HIQLAgent(flax.struct.PyTreeNode):
         if not self.config['low_actor_rep_grad']:
             # Stop gradients through the goal representations.
             goal_reps = jax.lax.stop_gradient(goal_reps)
+        # The low-level policy takes in both the current state and (a representation of) the goal.
         dist = self.network.select('low_actor')(batch['observations'], goal_reps, goal_encoded=True, params=grad_params)
         log_prob = dist.log_prob(batch['actions'])
 
@@ -107,6 +116,8 @@ class HIQLAgent(flax.struct.PyTreeNode):
         exp_a = jnp.exp(adv * self.config['high_alpha'])
         exp_a = jnp.minimum(exp_a, 100.0)
 
+        # This is a distribution over encoded subgoal states, default is a Gaussian distribution with fixed std but can be changed
+        #  to a state-dependent std.
         dist = self.network.select('high_actor')(batch['observations'], batch['high_actor_goals'], params=grad_params)
         target = self.network.select('goal_rep')(
             jnp.concatenate([batch['observations'], batch['high_actor_targets']], axis=-1)

@@ -38,12 +38,16 @@ class GCIVLAgent(flax.struct.PyTreeNode):
         """
         (next_v1_t, next_v2_t) = self.network.select('target_value')(batch['next_observations'], batch['value_goals'])
         next_v_t = jnp.minimum(next_v1_t, next_v2_t)
+        # r(s, g) + gamma * V(s', g)
         q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v_t
 
+        # V(s, g)
         (v1_t, v2_t) = self.network.select('target_value')(batch['observations'], batch['value_goals'])
         v_t = (v1_t + v2_t) / 2
+        # A(s, g) = r(s, g) + gamma * V(s', g) - V(s, g)
         adv = q - v_t
 
+        # r(s, g) + gamma * V(s', g)
         q1 = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v1_t
         q2 = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v2_t
         (v1, v2) = self.network.select('value')(batch['observations'], batch['value_goals'], params=grad_params)
@@ -62,13 +66,17 @@ class GCIVLAgent(flax.struct.PyTreeNode):
 
     def actor_loss(self, batch, grad_params, rng=None):
         """Compute the AWR actor loss."""
+        # V(s)
         v1, v2 = self.network.select('value')(batch['observations'], batch['actor_goals'])
+        # V(s')
         nv1, nv2 = self.network.select('value')(batch['next_observations'], batch['actor_goals'])
         v = (v1 + v2) / 2
         nv = (nv1 + nv2) / 2
+        # Simplified advantage proposed in HIQL (no r(s,a) or discount factor).
         adv = nv - v
 
         exp_a = jnp.exp(adv * self.config['alpha'])
+        # Clip the exponential term to prevent numerical instability.
         exp_a = jnp.minimum(exp_a, 100.0)
 
         dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
